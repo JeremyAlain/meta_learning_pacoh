@@ -113,7 +113,7 @@ class GPRegressionLearned(RegressionModel):
 
         self.fitted = False
 
-    def fit(self, valid_x=None, valid_t=None, verbose=True, log_period=500, n_iter=None):
+    def fit(self, valid_x=None, valid_t=None, verbose=True, log_period=500, n_iter=None, calculate_nDCG:bool=False):
         """
         fits GP prior parameters of by maximizing the marginal log-likelihood (mll) of the training data
 
@@ -154,12 +154,21 @@ class GPRegressionLearned(RegressionModel):
                     if valid_x is not None:
                         self.model.eval()
                         self.likelihood.eval()
-                        valid_ll, valid_rmse, calibr_err = self.eval(valid_x, valid_t)
+                        if calculate_nDCG:
+                            valid_ll, valid_rmse, calibr_err, l1_loss, valid_nDCG_1, valid_nDCG_3, = self.eval(valid_x, valid_t, calculate_nDCG=True)
+                            message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Valid Calib-Err %.3f - Valid MAE %.3f - ' \
+                                       'Valid nDCG_1 %.3f - Valid nDCG_3 %.3f' % (
+                                           valid_ll, valid_rmse, calibr_err, l1_loss, valid_nDCG_1, valid_nDCG_3)
+
+                        else:
+                            valid_ll, valid_rmse, calibr_err = self.eval(valid_x, valid_t)
+                            message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Calib-Err %.3f' % (
+                            valid_ll, valid_rmse, calibr_err)
+
                         self.lr_scheduler.step(valid_ll)
                         self.model.train()
                         self.likelihood.train()
 
-                        message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Calib-Err %.3f' % (valid_ll, valid_rmse, calibr_err)
 
                     if verbose:
                         self.logger.info(message)

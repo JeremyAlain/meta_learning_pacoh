@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from meta_learn.util import get_logger, _handle_input_dimensionality
 from config import device
-
+from pytorchltr.evaluation import ndcg
 
 class RegressionModel:
 
@@ -22,7 +22,7 @@ class RegressionModel:
     def predict(self, test_x, return_density=False, **kwargs):
         raise NotImplementedError
 
-    def eval(self, test_x, test_t, **kwargs):
+    def eval(self, test_x, test_t, calculate_nDCG:bool=False, **kwargs):
         """
         Computes the average test log likelihood and the rmse on test data
 
@@ -44,8 +44,17 @@ class RegressionModel:
 
             pred_dist_vect = self._vectorize_pred_dist(pred_dist)
             calibr_error = self._calib_error(pred_dist_vect, test_t_tensor)
+            l1_loss = torch.nn.functional.l1_loss(pred_dist.mean, test_t_tensor)
 
-            return avg_log_likelihood.cpu().item(), rmse.cpu().item(), calibr_error.cpu().item()
+            if calculate_nDCG:
+                predictions = pred_dist.mean.reshape(1, -1)
+                scores = test_t_tensor.reshape(1, -1)
+                number_of_predictions = pred_dist.mean.reshape(1, -1).shape[1]
+                nDCG_1 = ndcg(predictions, scores, torch.tensor([number_of_predictions]), k=1)
+                nDCG_3 = ndcg(predictions, scores, torch.tensor([number_of_predictions]), k=3)
+                return avg_log_likelihood.cpu().item(), rmse.cpu().item(), calibr_error.cpu().item(), l1_loss.cpu().item(), nDCG_1.cpu().item(), nDCG_3.cpu().item()
+            else:
+                return avg_log_likelihood.cpu().item(), rmse.cpu().item(), calibr_error.cpu().item(), l1_loss.cpu().item()
 
     def confidence_intervals(self, test_x, confidence=0.9, **kwargs):
         pred_dist = self.predict(test_x, return_density=True, **kwargs)
@@ -131,7 +140,7 @@ class RegressionModelMetaLearned:
     def predict(self, context_x, context_y, test_x, **kwargs):
         raise NotImplementedError
 
-    def eval(self, context_x, context_y, test_x, test_y, flatten_y=True, **kwargs):
+    def eval(self, context_x, context_y, test_x, test_y, flatten_y=True, calculate_nDCG:bool=False, **kwargs):
         """
         Performs posterior inference (target training) with (context_x, context_y) as training data and then
         computes the average test log likelihood, rmse and calibration error on (test_x, test_y)
@@ -160,9 +169,19 @@ class RegressionModelMetaLearned:
         pred_dist_vect = self._vectorize_pred_dist(pred_dist)
         calibr_error = self._calib_error(pred_dist_vect, test_y_tensor)
 
-        return avg_log_likelihood.cpu().item(), rmse.cpu().item(), calibr_error.cpu().item()
+        l1_loss = torch.nn.functional.l1_loss(pred_dist.mean, test_y_tensor)
 
-    def eval_datasets(self, test_tuples, flatten_y=True, **kwargs):
+        if calculate_nDCG:
+            predictions = pred_dist.mean.reshape(1,-1)
+            scores = test_y_tensor.reshape(1,-1)
+            number_of_predictions = pred_dist.mean.reshape(1,-1).shape[1]
+            nDCG_1 = ndcg(predictions, scores, torch.tensor([number_of_predictions]), k=1)
+            nDCG_3 = ndcg(predictions, scores, torch.tensor([number_of_predictions]), k=3)
+            return avg_log_likelihood.cpu().item(), rmse.cpu().item(), calibr_error.cpu().item(), l1_loss.cpu().item(), nDCG_1.cpu().item(), nDCG_3.cpu().item()
+
+        return avg_log_likelihood.cpu().item(), rmse.cpu().item(), calibr_error.cpu().item(), l1_loss
+
+    def eval_datasets(self, test_tuples, flatten_y=True, calculate_nDCG:bool=False, **kwargs):
         """
         Performs meta-testing on multiple tasks / datasets.
         Computes the average test log likelihood, the rmse and the calibration error over multiple test datasets
@@ -176,9 +195,14 @@ class RegressionModelMetaLearned:
 
         assert (all([len(valid_tuple) == 4 for valid_tuple in test_tuples]))
 
-        ll_list, rmse_list, calibr_err_list = list(zip(*[self.eval(*test_data_tuple, flatten_y=flatten_y, **kwargs) for test_data_tuple in test_tuples]))
-
-        return np.mean(ll_list), np.mean(rmse_list), np.mean(calibr_err_list)
+        if calculate_nDCG:
+            ll_list, rmse_list, calibr_err_list, l1_loss_list, nDCG_1_list, nDCG_3_list = list(
+                zip(*[self.eval(*test_data_tuple, flatten_y=flatten_y, calculate_nDCG=calculate_nDCG, **kwargs) for
+                      test_data_tuple in test_tuples]))
+            return np.mean(ll_list), np.mean(rmse_list), np.mean(calibr_err_list), np.mean(l1_loss_list), np.mean(nDCG_1_list), np.mean(nDCG_3_list)
+        else:
+            ll_list, rmse_list, calibr_err_list, l1_loss_list = list(zip(*[self.eval(*test_data_tuple, flatten_y=flatten_y, calculate_nDCG=calculate_nDCG, **kwargs) for test_data_tuple in test_tuples]))
+            return np.mean(ll_list), np.mean(rmse_list), np.mean(calibr_err_list), np.mean(l1_loss_list)
 
     def confidence_intervals(self, context_x, context_y, test_x, confidence=0.9, **kwargs):
         """

@@ -83,7 +83,7 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
         self.adapted_likelihood = None
 
 
-    def meta_fit(self, valid_tuples=None, verbose=True, log_period=500, n_iter=None):
+    def meta_fit(self, valid_tuples=None, verbose=True, log_period=500, n_iter=None, calculate_nDCG:bool=False):
         """
         meta-learns the GP prior parameters
 
@@ -134,9 +134,17 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
                     # if validation data is provided  -> compute the valid log-likelihood
                     if valid_tuples is not None:
                         self.likelihood.eval()
-                        valid_ll, valid_rmse, calibr_err = self.eval_datasets(valid_tuples)
+                        if calculate_nDCG:
+                            valid_ll, valid_rmse, calibr_err, l1_loss, valid_nDCG_1, valid_nDCG_3,  = self.eval_datasets(valid_tuples, calculate_nDCG=calculate_nDCG)
+                            message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Valid Calib-Err %.3f - Valid MAE %.3f - ' \
+                                       'Valid nDCG_1 %.3f - Valid nDCG_3 %.3f' % (
+                                        valid_ll, valid_rmse, calibr_err, l1_loss, valid_nDCG_1, valid_nDCG_3)
+                        else:
+                            valid_ll, valid_rmse, calibr_err, l1_loss,  = self.eval_datasets(valid_tuples, calculate_nDCG=calculate_nDCG)
+                            message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Calib-Err %.3f - MAE %.3f' % (
+                                        valid_ll, valid_rmse, calibr_err, l1_loss)
+
                         self.likelihood.train()
-                        message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Calib-Err %.3f' % (valid_ll, valid_rmse, calibr_err)
 
                     if verbose:
                         self.logger.info(message)
