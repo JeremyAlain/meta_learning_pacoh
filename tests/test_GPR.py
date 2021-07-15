@@ -84,8 +84,8 @@ class TestGPR_mll(unittest.TestCase):
                                                        mean_module=mean_module, covar_module='SE', mean_nn_layers=(16, 16))
             gpr_model_learn_mean.fit()
 
-            ll_vanilla, rmse_vanilla, _ = gpr_model_vanilla.eval(self.x_train, self.y_train_two)
-            ll_mean, rmse_mean, _ = gpr_model_learn_mean.eval(self.x_train, self.y_train_sin)
+            ll_vanilla, rmse_vanilla, _, _ = gpr_model_vanilla.eval(self.x_train, self.y_train_two)
+            ll_mean, rmse_mean, _, _ = gpr_model_learn_mean.eval(self.x_train, self.y_train_sin)
 
             print(ll_mean, ll_vanilla)
             print(rmse_mean, rmse_vanilla)
@@ -110,8 +110,8 @@ class TestGPR_mll(unittest.TestCase):
             gpr_model_learn_kernel.fit(valid_x=self.x_train, valid_t=self.y_train_sin)
             print(gpr_model_learn_kernel.model.covar_module.lengthscale)
 
-            ll_vanilla, rmse_vanilla, _ = gpr_model_vanilla.eval(self.x_train, self.y_train_sin)
-            ll_kernel, rmse_kernel, _ = gpr_model_learn_kernel.eval(self.x_train, self.y_train_sin)
+            ll_vanilla, rmse_vanilla, _, _ = gpr_model_vanilla.eval(self.x_train, self.y_train_sin)
+            ll_kernel, rmse_kernel, _, _ = gpr_model_learn_kernel.eval(self.x_train, self.y_train_sin)
 
             print('learning_mode', learning_mode)
             print(ll_kernel, ll_vanilla)
@@ -134,8 +134,8 @@ class TestGPR_mll(unittest.TestCase):
                                                     kernel_nn_layers=(16, 16), mean_nn_layers=(16, 16))
             gpr_model_learn_kernel.fit(valid_x=self.x_train, valid_t=self.y_train_sin)
 
-            ll_vanilla, rmse_vanilla, _ = gpr_model_vanilla.eval(self.x_train, self.y_train_sin)
-            ll_kernel, rmse_kernel, _ = gpr_model_learn_kernel.eval(self.x_train, self.y_train_sin)
+            ll_vanilla, rmse_vanilla, _, _ = gpr_model_vanilla.eval(self.x_train, self.y_train_sin)
+            ll_kernel, rmse_kernel, _, _ = gpr_model_learn_kernel.eval(self.x_train, self.y_train_sin)
 
             print('learning_mode', learning_mode)
             print(ll_kernel, ll_vanilla)
@@ -231,7 +231,7 @@ class TestGPR_mll_meta(unittest.TestCase):
                                           mean_module='NN', weight_decay=0.0)
         gp_meta.meta_fit(valid_tuples=self.test_data_tuples)
 
-        test_ll_meta_2, test_rmse_meta_2, _ = gp_meta.eval_datasets(self.test_data_tuples)
+        test_ll_meta_2, test_rmse_meta_2, _, _ = gp_meta.eval_datasets(self.test_data_tuples)
         print('Test log-likelihood meta (2 datasets):', test_ll_meta_2)
 
         # meta-learning with 10 datasets
@@ -240,7 +240,7 @@ class TestGPR_mll_meta(unittest.TestCase):
                                           mean_module='NN', weight_decay=0.0)
         gp_meta.meta_fit(valid_tuples=self.test_data_tuples)
 
-        test_ll_meta_10, test_rmse_meta_10, _ = gp_meta.eval_datasets(self.test_data_tuples)
+        test_ll_meta_10, test_rmse_meta_10, _, _ = gp_meta.eval_datasets(self.test_data_tuples)
         print('Test log-likelihood meta (10 datasets):', test_ll_meta_10)
 
 
@@ -249,7 +249,6 @@ class TestGPR_mll_meta(unittest.TestCase):
 
 
     def test_normal_vs_meta(self):
-
         # check that meta-learning improves upon normal learned GP
         torch.manual_seed(60)
         num_iter_fit = 1000
@@ -260,7 +259,7 @@ class TestGPR_mll_meta(unittest.TestCase):
 
         gp_meta.meta_fit(valid_tuples=self.test_data_tuples)
 
-        test_ll_meta, test_rmse_meta, _ = gp_meta.eval_datasets(self.test_data_tuples)
+        test_ll_meta, test_rmse_meta, _, _ = gp_meta.eval_datasets(self.test_data_tuples)
         print('Test log-likelihood meta:', test_ll_meta)
 
         def fit_eval_gpr(x_context, t_context, x_test, t_test):

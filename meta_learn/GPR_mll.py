@@ -161,9 +161,9 @@ class GPRegressionLearned(RegressionModel):
                                            valid_ll, valid_rmse, calibr_err, l1_loss, valid_nDCG_1, valid_nDCG_3)
 
                         else:
-                            valid_ll, valid_rmse, calibr_err = self.eval(valid_x, valid_t)
-                            message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Calib-Err %.3f' % (
-                            valid_ll, valid_rmse, calibr_err)
+                            valid_ll, valid_rmse, calibr_err, l1_loss = self.eval(valid_x, valid_t)
+                            message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Calib-Err %.3f - Valid MAE %.3f - ' % (
+                            valid_ll, valid_rmse, calibr_err, l1_loss)
 
                         self.lr_scheduler.step(valid_ll)
                         self.model.train()
