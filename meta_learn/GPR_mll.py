@@ -113,7 +113,7 @@ class GPRegressionLearned(RegressionModel):
 
         self.fitted = False
 
-    def fit(self, valid_x=None, valid_t=None, verbose=True, log_period=500, n_iter=None, calculate_nDCG:bool=False):
+    def fit(self, valid_x=None, valid_t=None, verbose=True, log_period=500, n_iter=None, calculate_nDCG:bool=False, report_metrics_of_best_model:bool=False):
         """
         fits GP prior parameters of by maximizing the marginal log-likelihood (mll) of the training data
 
@@ -124,6 +124,10 @@ class GPRegressionLearned(RegressionModel):
             log_period: (int) number of steps after which to print stats
             n_iter: (int) number of gradient descent iterations
         """
+        best_validation_rmse = np.infty
+        best_l1_loss = np.infty
+        best_nDCG1 = np.infty
+        best_nDCG3 = np.infty
         self.model.train()
         self.likelihood.train()
 
@@ -144,7 +148,7 @@ class GPRegressionLearned(RegressionModel):
                 self.optimizer.step()
 
                 # print training stats stats
-                if itr == 1 or itr % log_period == 0:
+                if itr % log_period == 0:
                     duration = time.time() - t
                     t = time.time()
 
@@ -160,10 +164,19 @@ class GPRegressionLearned(RegressionModel):
                                        'Valid nDCG_1 %.3f - Valid nDCG_3 %.3f' % (
                                            valid_ll, valid_rmse, calibr_err, l1_loss, valid_nDCG_1, valid_nDCG_3)
 
+                            if report_metrics_of_best_model:
+                                if valid_rmse < best_validation_rmse:
+                                    best_validation_rmse = valid_rmse
+                                    best_l1_loss = l1_loss
+                                    best_nDCG1 = valid_nDCG_1
+                                    best_nDCG3 = valid_nDCG_3
                         else:
                             valid_ll, valid_rmse, calibr_err, l1_loss = self.eval(valid_x, valid_t)
                             message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Calib-Err %.3f - Valid MAE %.3f - ' % (
                             valid_ll, valid_rmse, calibr_err, l1_loss)
+                            if report_metrics_of_best_model:
+                                if valid_rmse < best_validation_rmse:
+                                    best_validation_rmse = valid_rmse
 
                         self.lr_scheduler.step(valid_ll)
                         self.model.train()
@@ -180,7 +193,13 @@ class GPRegressionLearned(RegressionModel):
 
         self.model.eval()
         self.likelihood.eval()
-        return loss.item()
+        if report_metrics_of_best_model:
+            if calculate_nDCG:
+                return best_validation_rmse, best_l1_loss, best_nDCG1, best_nDCG3
+            else:
+                return best_validation_rmse
+        else:
+            return loss.item()
 
     def predict(self, test_x, return_density=False, **kwargs):
         """

@@ -3,6 +3,7 @@ import torch.nn as nn
 import math
 import torch
 import numpy as np
+from pytorchltr.evaluation import ndcg
 
 from meta_learn.models import NeuralNetwork
 from meta_learn.abstract import RegressionModelMetaLearned
@@ -55,7 +56,8 @@ class MAMLRegression(RegressionModelMetaLearned):
 
         self.fitted = False
 
-    def meta_fit(self, valid_tuples=None, verbose=True, log_period=500, n_iter=None):
+    def meta_fit(self, valid_tuples=None, verbose=True, log_period=500, n_iter=None, calculate_additional_metrics:bool=False,
+                 report_metrics_of_best_model:bool=False):
         """
         fits the initial params via MAML
 
@@ -65,8 +67,11 @@ class MAMLRegression(RegressionModelMetaLearned):
             log_period: (int) number of steps after which to print stats
             n_iter: (int) number of gradient descent iterations
         """
-
         assert (valid_tuples is None) or (all([len(valid_tuple) == 4 for valid_tuple in valid_tuples]))
+        best_valid_rmse = np.infty
+        best_l1_loss = np.infty
+        best_nDCG_1 = np.infty
+        best_nDCG_3 = np.infty
 
         t = time.time()
 
@@ -86,7 +91,7 @@ class MAMLRegression(RegressionModelMetaLearned):
             cum_loss += loss
 
             # print training stats stats
-            if itr == 1 or itr % log_period == 0:
+            if itr % log_period == 0:
                 duration = time.time() - t
                 avg_loss = cum_loss / (log_period if itr > 1 else 1.0)
                 cum_loss = 0.0
@@ -96,16 +101,32 @@ class MAMLRegression(RegressionModelMetaLearned):
 
                 # if validation data is provided  -> compute the valid log-likelihood
                 if valid_tuples is not None:
-                    valid_rmse = self.eval_datasets(valid_tuples)
-                    message += ' Valid-RMSE: %.3f ' % valid_rmse
-
+                    if calculate_additional_metrics:
+                        valid_rmse, valid_l1_loss, valid_nDCG_1, valid_nDCG_3 = self.eval_datasets(valid_tuples, calculate_additional_metrics=calculate_additional_metrics)
+                        message += ' Valid-RMSE: %.3f - Valid MAE %.3f - ' \
+                                    'Valid nDCG_1 %.3f - Valid nDCG_3 %.3f' % (valid_rmse, valid_l1_loss, valid_nDCG_1, valid_nDCG_3)
+                        if valid_rmse < best_valid_rmse:
+                            best_valid_rmse = valid_rmse
+                            best_l1_loss = valid_l1_loss
+                            best_nDCG_1 = valid_nDCG_1
+                            best_nDCG_3 = valid_nDCG_3
+                    else:
+                        valid_rmse = self.eval_datasets(valid_tuples, calculate_additional_metrics=calculate_additional_metrics)
+                        message += ' Valid-RMSE: %.3f' % valid_rmse
+                        if valid_rmse < best_valid_rmse:
+                            best_valid_rmse = valid_rmse
                 if verbose:
                     self.logger.info(message)
 
 
         self.fitted = True
-
-        return loss.item()
+        if report_metrics_of_best_model:
+            if calculate_additional_metrics:
+                return best_valid_rmse, best_l1_loss, best_nDCG_1, best_nDCG_3
+            else:
+                return best_valid_rmse
+        else:
+            return loss.item()
 
     def predict(self, context_x, context_y, test_x, return_tensor=False, num_steps_eval=None):
         """
@@ -146,7 +167,7 @@ class MAMLRegression(RegressionModelMetaLearned):
             else:
                 return y_pred.cpu().numpy(), y_pred2.cpu().numpy()
 
-    def eval(self, context_x, context_y, test_x, test_y, num_steps_eval=None):
+    def eval(self, context_x, context_y, test_x, test_y, num_steps_eval=None, calculate_additional_metrics:bool=False):
         """
            Computes the rmse on the test data after adapting the parameters to the context data
 
@@ -166,10 +187,18 @@ class MAMLRegression(RegressionModelMetaLearned):
 
         # print(self.loss_fn(y_pred, test_y_tensor).item())
         rmse = torch.mean(torch.sum(torch.pow(y_pred - test_y_tensor, 2), dim=-1)).sqrt()
+        if calculate_additional_metrics:
+            predictions = y_pred.reshape(1,-1)
+            scores = test_y_tensor.reshape(1, -1)
+            number_of_predictions = y_pred.reshape(1, -1).shape[1]
+            nDCG_1 = ndcg(predictions, scores, torch.tensor([number_of_predictions]), k=1)
+            nDCG_3 = ndcg(predictions, scores, torch.tensor([number_of_predictions]), k=3)
+            l1_loss = torch.nn.functional.l1_loss(y_pred, test_y_tensor)
+            return rmse.cpu().item(), l1_loss.cpu().item(), nDCG_1.cpu().item(), nDCG_3.cpu().item()
 
         return rmse.cpu().item()
 
-    def eval_datasets(self, test_tuples, **kwargs):
+    def eval_datasets(self, test_tuples, calculate_additional_metrics:bool=False, **kwargs, ):
         """
            Computes the average test rmse over multiple test datasets
 
@@ -179,10 +208,13 @@ class MAMLRegression(RegressionModelMetaLearned):
            Returns: rmse
         """
         assert (all([len(valid_tuple) == 4 for valid_tuple in test_tuples]))
-
-        rmse_list = [self.eval(*test_data_tuple, **kwargs) for test_data_tuple in test_tuples]
-
-        return np.mean(rmse_list)
+        if calculate_additional_metrics:
+            rmse_list, l1_list, nDCG1_list, nDCG3_list = list(
+                zip(*[self.eval(*test_data_tuple, calculate_additional_metrics=calculate_additional_metrics, **kwargs) for test_data_tuple in test_tuples]))
+            return np.mean(rmse_list), np.mean(l1_list), np.mean(nDCG1_list), np.mean(nDCG3_list)
+        else:
+            rmse_list = [self.eval(*test_data_tuple, calculate_additional_metrics=calculate_additional_metrics,**kwargs) for test_data_tuple in test_tuples]
+            return np.mean(rmse_list)
 
     def _setup_optimizer(self, optimizer, lr, lr_decay):
         if optimizer == 'Adam':

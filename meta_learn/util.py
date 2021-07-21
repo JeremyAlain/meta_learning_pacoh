@@ -50,7 +50,7 @@ def _handle_input_dimensionality(x, y=None):
     if y is not None:
         if y.ndim == 1:
             y = np.expand_dims(y, -1)
-        assert x.shape[0] == y.shape[0]
+        assert x.shape[0] == y.shape[0], "x.shape {}, y.shape {}".format(x.shape, y.shape)
         assert y.ndim == 2
 
         return x, y

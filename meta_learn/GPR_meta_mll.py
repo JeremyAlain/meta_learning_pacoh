@@ -83,7 +83,7 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
         self.adapted_likelihood = None
 
 
-    def meta_fit(self, valid_tuples=None, verbose=True, log_period=500, n_iter=None, calculate_nDCG:bool=False):
+    def meta_fit(self, valid_tuples=None, verbose=True, log_period=500, n_iter=None, calculate_nDCG:bool=False, report_metrics_for_best_model:bool=False):
         """
         meta-learns the GP prior parameters
 
@@ -95,8 +95,11 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
         """
         for task_dict in self.task_dicts: task_dict['model'].train()
         self.likelihood.train()
-
         assert (valid_tuples is None) or (all([len(valid_tuple) == 4 for valid_tuple in valid_tuples]))
+        best_validation_rsme = np.infty
+        best_l1_loss = np.infty
+        best_valid_nDCG_1 = np.infty
+        best_valid_nDCG_3 = np.infty
 
         if len(self.shared_parameters) > 0:
             t = time.time()
@@ -123,7 +126,7 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
                 cum_loss += loss
 
                 # print training stats stats
-                if itr == 1 or itr % log_period == 0:
+                if itr % log_period == 0:
                     duration = time.time() - t
                     avg_loss = cum_loss / (log_period if itr > 1 else 1.0)
                     cum_loss = 0.0
@@ -139,11 +142,17 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
                             message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Valid Calib-Err %.3f - Valid MAE %.3f - ' \
                                        'Valid nDCG_1 %.3f - Valid nDCG_3 %.3f' % (
                                         valid_ll, valid_rmse, calibr_err, l1_loss, valid_nDCG_1, valid_nDCG_3)
+                            if valid_rmse < best_validation_rsme:
+                                best_validation_rsme = valid_rmse
+                                best_l1_loss = l1_loss
+                                best_valid_nDCG_1 = valid_nDCG_1
+                                best_valid_nDCG_3 = valid_nDCG_3
                         else:
                             valid_ll, valid_rmse, calibr_err, l1_loss,  = self.eval_datasets(valid_tuples, calculate_nDCG=calculate_nDCG)
                             message += ' - Valid-LL: %.3f - Valid-RMSE: %.3f - Calib-Err %.3f - MAE %.3f' % (
                                         valid_ll, valid_rmse, calibr_err, l1_loss)
-
+                            if valid_rmse < best_validation_rsme:
+                                best_validation_rsme = valid_rmse
                         self.likelihood.train()
 
                     if verbose:
@@ -159,7 +168,13 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
         # not sure what is happening int ExactGP, if it modifies likelihood or not. Thus as safety net I am
         # cloning it and for each adaptation using the clean trained likelihood
         self.trained_likelihood = deepcopy(self.likelihood)
-        return loss.item()
+        if report_metrics_for_best_model:
+            if calculate_nDCG:
+                return best_validation_rsme, best_l1_loss, best_valid_nDCG_1, best_valid_nDCG_3
+            else:
+                return best_validation_rsme
+        else:
+            return loss.item()
 
     def predict(self, context_x, context_y, test_x, return_density=False):
         """
