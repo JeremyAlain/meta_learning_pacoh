@@ -164,10 +164,11 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
         self.fitted = True
 
         for task_dict in self.task_dicts: task_dict['model'].eval()
+        self.likelihood.train()
+        self.trained_likelihood = deepcopy(self.likelihood)
         self.likelihood.eval()
         # not sure what is happening int ExactGP, if it modifies likelihood or not. Thus as safety net I am
         # cloning it and for each adaptation using the clean trained likelihood
-        self.trained_likelihood = deepcopy(self.likelihood)
         if report_metrics_for_best_model:
             if calculate_nDCG:
                 return best_validation_rsme, best_l1_loss, best_valid_nDCG_1, best_valid_nDCG_3
@@ -229,6 +230,7 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
         # take trained likelihood
         assert self.trained_likelihood is not None
         self.likelihood = deepcopy(self.trained_likelihood)
+        self.likelihood.train()
         with torch.no_grad():
             # compute posterior given the context data
             gp_model = LearnedGPRegressionModel(context_x, context_y, self.likelihood,
@@ -249,6 +251,8 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
         # normalize data and convert to tensor
         test_x = self._normalize_data(X=test_x, Y=None)
         test_x = torch.from_numpy(test_x).float().to(device)
+        self.adapted_likelihood.eval()
+        self.adapted_model.eval()
 
         with torch.no_grad():
             pred_dist = self.adapted_likelihood(self.adapted_model(test_x))
