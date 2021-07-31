@@ -145,7 +145,7 @@ class MAMLRegression(RegressionModelMetaLearned):
 
         context_x, context_y = _handle_input_dimensionality(context_x, context_y)
         test_x = _handle_input_dimensionality(test_x)
-        assert test_x.shape[1] == context_x.shape[1]
+        assert test_x.shape[1] == context_x.shape[1] == self.input_dim
 
         # normalize data and convert to tensor
         context_x, context_y = self._prepare_data_per_task(context_x, context_y, flatten_y=False)
@@ -166,6 +166,33 @@ class MAMLRegression(RegressionModelMetaLearned):
                 return y_pred
             else:
                 return y_pred.cpu().numpy(), y_pred2.cpu().numpy()
+
+    def adapt_maml_to_context(self, context_x, context_y) -> None:
+        assert context_x.shape[1] == self.input_dim
+        context_x, context_y = _handle_input_dimensionality(context_x, context_y)
+
+        # normalize data and convert to tensor
+        context_x, context_y = self._prepare_data_per_task(context_x, context_y, flatten_y=False)
+
+        # perform adaptation steps on context data
+        adapted_params = self._eval_steps(context_x, context_y, num_steps_eval=None)
+        self.adapted_params = adapted_params
+
+    def predict_with_adapted_maml(self, test_x):
+        assert test_x.shape[1] == self.input_dim
+        assert self.adapted_params is not None, "You need to first call adapt_maml_to_context"
+
+        test_x = _handle_input_dimensionality(test_x)
+
+        # normalize data and convert to tensor
+        test_x = self._normalize_data(X=test_x, Y=None)
+        test_x = torch.from_numpy(test_x).float().to(device)
+
+        with torch.no_grad():
+            y_pred = self.nn.forward_parametrized(test_x, self.adapted_params)
+            y_pred = y_pred * torch.Tensor(self.y_std).float()[None, :] + torch.Tensor(self.y_mean).float()[None, :]
+            return y_pred.cpu().numpy()
+
 
     def eval(self, context_x, context_y, test_x, test_y, num_steps_eval=None, calculate_additional_metrics:bool=False):
         """
@@ -268,7 +295,6 @@ class MAMLRegression(RegressionModelMetaLearned):
         return meta_loss
 
     def _eval_steps(self, x_data, y_data, num_steps_eval=None):
-
         if num_steps_eval is None:
             num_steps_eval = self.num_inner_steps
 
@@ -320,34 +346,3 @@ if __name__ == "__main__":
         plt.title('num iter: %i'%10000)
         plt.show()
 
-
-
-    # nn = NeuralNetwork(1, 1, layer_sizes=(32, 32))
-    #
-    # x_train = torch.Tensor(train_data[0][0]).float().to(device)
-    # y_train = torch.Tensor(train_data[0][1]).float().to(device)
-    #
-    # params = list(nn.parameters())
-    #
-    # optim = torch.optim.Adam(params)
-    #
-    # for i in range(5000):
-    #     optim.zero_grad()
-    #     loss = 0.5 * torch.mean((nn.forward_parametrized(x_train, params) - y_train) ** 2)
-    #     loss.backward()
-    #     optim.step()
-    #     if i % 500 == 0:
-    #         print(i, loss.item())
-    #
-    #
-    # x_plot = np.linspace(-4, 4, 200).reshape(-1, 1)
-    #
-    # with torch.no_grad():
-    #     x = torch.Tensor(x_plot).float().to(device)
-    #     y_pred = nn(x).numpy()
-    #
-    # from matplotlib import pyplot as plt
-    #
-    # plt.scatter(train_data[0][0], train_data[0][1])
-    # plt.plot(x, y_pred)
-    # plt.show()

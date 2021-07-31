@@ -193,7 +193,7 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
 
         context_x, context_y = _handle_input_dimensionality(context_x, context_y)
         test_x = _handle_input_dimensionality(test_x)
-        assert test_x.shape[1] == context_x.shape[1]
+        assert test_x.shape[1] == context_x.shape[1] == self.input_dim
 
         # normalize data and convert to tensor
         context_x, context_y = self._prepare_data_per_task(context_x, context_y)
@@ -220,7 +220,9 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
             return pred_mean.cpu().numpy(), pred_std.cpu().numpy()
 
     def adapt_gp_to_context(self, context_x, context_y) -> None:
+        assert context_x.shape[1] == self.input_dim
         context_x, context_y = _handle_input_dimensionality(context_x, context_y)
+
         # normalize data and convert to tensor
         context_x, context_y = self._prepare_data_per_task(context_x, context_y)
 
@@ -238,10 +240,12 @@ class GPRegressionMetaLearned(RegressionModelMetaLearned):
             self.adapted_likelihood = self.likelihood
 
     def predict_with_adapted_gp(self, test_x):
+        assert test_x.shape[1] == self.input_dim
+        assert self.adapted_model is not None, "You need to first call adapt_gp_to_context"
+        assert self.adapted_likelihood is not None, "You need to first call adapt_gp_to_context"
+
         test_x = _handle_input_dimensionality(test_x)
 
-        assert self.adapted_model is not None
-        assert self.adapted_likelihood is not None
         # normalize data and convert to tensor
         test_x = self._normalize_data(X=test_x, Y=None)
         test_x = torch.from_numpy(test_x).float().to(device)
